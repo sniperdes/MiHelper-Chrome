@@ -1,48 +1,50 @@
-console.log("MiHelper: content.js cargado y listo para capturar miniaturas.");
+console.log("MiHelper: content.js cargado (Buscador inteligente de miniaturas).");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "obtenerDatosFisicosVideo") {
-    // Buscamos el elemento de video real en la página web
     const video = document.querySelector("video");
     
-    if (video) {
-      // 1. Calcular duración real del video en minutos y segundos
-      const totalSegundos = video.duration || 0;
+    // 1. Duración base por si no detecta el reproductor físico
+    let duracionFormateada = "24:01";
+    if (video && video.duration) {
+      const totalSegundos = video.duration;
       const minutos = Math.floor(totalSegundos / 60);
       const segundos = Math.floor(totalSegundos % 60).toString().padStart(2, '0');
-      const duracionFormateada = totalSegundos > 0 ? `${minutos}:${segundos}` : "24:01";
-
-      // 2. Intentar usar la imagen de portada nativa del sitio (si existe)
-      let urlMiniatura = video.poster || "";
-
-      // 3. TRUCO DE FOTOGRAMA: Si no hay póster, tomamos una "foto" instantánea del video actual
-      if (!urlMiniatura && video.videoWidth > 0) {
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = 160; // Ancho optimizado para la tarjetita de la extensión
-          canvas.height = 90; // Proporción estándar 16:9 de video
-          const ctx = canvas.getContext("2d");
-          
-          // Dibujamos el fotograma exacto del video dentro del lienzo oculto
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // Convertimos ese dibujo en una imagen de texto Base64 real que Chrome puede leer
-          urlMiniatura = canvas.toDataURL("image/jpeg", 0.7);
-        } catch (e) {
-          console.log("MiHelper: No se pudo capturar el fotograma por seguridad (CORS)", e);
-        }
-      }
-
-      // Enviamos todas las propiedades listas al popup.js
-      sendResponse({
-        titulo: document.title || "Video Detectado",
-        duracion: duracionFormateada,
-        poster: urlMiniatura
-      });
-    } else {
-      // Si abren la extensión en una página donde no hay un tag <video> visible
-      sendResponse({ titulo: document.title || "Video Detectado", duracion: "24:01", poster: "" });
+      duracionFormateada = `${minutos}:${segundos}`;
     }
+
+    // 2. BUSCADOR INTELIGENTE DE MINIATURAS (Evita errores de CORS)
+    let urlMiniatura = "";
+
+    // Intento A: Si el reproductor HTML5 tiene una portada nativa asignada
+    if (video && video.poster) {
+      urlMiniatura = video.poster;
+    }
+
+    // Intento B: Buscar la imagen de vista previa en las etiquetas Open Graph del sitio (Muy común en anime)
+    if (!urlMiniatura) {
+      const ogImage = document.querySelector('meta[property="og:image"]');
+      if (ogImage && ogImage.content) urlMiniatura = ogImage.content;
+    }
+
+    // Intento C: Buscar en las etiquetas estándar de Twitter Cards
+    if (!urlMiniatura) {
+      const twitterImage = document.querySelector('meta[name="twitter:image"]');
+      if (twitterImage && twitterImage.content) urlMiniatura = twitterImage.content;
+    }
+
+    // Intento D: Buscar la imagen del reproductor jwplayer o reproductores personalizados
+    if (!urlMiniatura) {
+      const imgPortada = document.querySelector('img[class*="poster"], div[class*="poster"] img, .jw-preview');
+      if (imgPortada && imgPortada.src) urlMiniatura = imgPortada.src;
+    }
+
+    // 3. ENVIAR RESULTADOS AL POPUP
+    sendResponse({
+      titulo: document.title || "Video Detectado",
+      duracion: duracionFormateada,
+      poster: urlMiniatura // Si todas fallan, viajará vacío y se activará el emoji 🎬
+    });
   }
-  return true; // Mantiene el canal de comunicación abierto
+  return true;
 });
