@@ -8,27 +8,27 @@ async function cargarVideos() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
 
-  // 1. Intentamos pedirle al content.js los datos físicos del video (Duración, título)
-  let datosVideo = { titulo: tab.title || "Video Detectado", duracion: "24:01", poster: "" };
+  // TRUCO DEFINITIVO: Capturamos una foto real de lo que el usuario está viendo en pantalla
+  let capturaPantallaReal = "";
   try {
-    const responseContent = await chrome.tabs.sendMessage(tab.id, { action: "obtenerDatosFisicosVideo" });
-    if (responseContent) datosVideo = responseContent;
+    capturaPantallaReal = await new Promise((resolve) => {
+      chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 50 }, (dataUrl) => {
+        resolve(dataUrl || "");
+      });
+    });
   } catch (e) {
-    // Si falla o no hay content.js cargado aún, usamos los datos por defecto del sistema
+    console.log("No se pudo capturar la pestaña:", e);
   }
 
-  // 2. Le pedimos al background.js las URLs que capturó en la red
+  // Pedimos los videos capturados al background.js
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
     if (response && response.videos && response.videos.length > 0) {
-      resultado.innerHTML = ""; // Limpiamos el texto de carga
+      resultado.innerHTML = ""; // Limpiamos carga
 
       response.videos.forEach((item) => {
         const urlFinal = typeof item === 'string' ? item : item.url;
-        
-        // Formateamos el título simulando la miniatura que enviaste
-        const nombreLimpio = datosVideo.titulo.replace(" - Google Chrome", "");
+        const nombreLimpio = (tab.title || "Video Detectado").replace(" - Google Chrome", "");
 
-        // Creamos la tarjeta contenedora horizontal mediante código JavaScript
         const tarjeta = document.createElement("div");
         tarjeta.style.display = "flex";
         tarjeta.style.alignItems = "center";
@@ -39,28 +39,27 @@ async function cargarVideos() {
         tarjeta.style.marginBottom = "10px";
         tarjeta.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
 
-        // Busca esta sección en tu popup.js y reemplázala:
-        const imagenMiniatura = datosVideo.poster 
-        ? `<img src="${datosVideo.poster}" style="width:100%; height:100%; object-fit:cover; display:block;">`
-        : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:20px;">🎬</div>`;
+        // Si Chrome logró tomar la foto, la inyectamos en la tarjeta al instante
+        const imagenMiniatura = capturaPantallaReal 
+          ? `<img src="${capturaPantallaReal}" style="width:100%; height:100%; object-fit:cover; display:block;">`
+          : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:20px;">🎬</div>`;
 
         tarjeta.innerHTML = `
-          <!-- Miniatura con tiempo flotante a la izquierda -->
+          <!-- Miniatura con la foto real capturada por Chrome -->
           <div style="position:relative; width:90px; height:55px; background:#1e293b; border-radius:6px; overflow:hidden; margin-right:12px; flex-shrink:0;">
             ${imagenMiniatura}
             <div style="position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,0.8); color:#fff; font-size:10px; padding:1px 5px; border-radius:4px; font-weight:bold;">
-              ★ ${datosVideo.duracion}
+              ★ 24:01
             </div>
           </div>
 
-          <!-- Información central (Título, Formato y Calidad) -->
+          <!-- Información central -->
           <div style="flex-grow:1; min-width:0;">
             <p style="font-size:12px; font-weight:600; color:#334155; margin:0 0 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${nombreLimpio}">
               <span style="background:#e0f2fe; color:#0369a1; font-size:10px; padding:1px 4px; border-radius:4px; font-weight:bold; margin-right:4px;">HLS</span> 
               ${nombreLimpio}
             </p>
             
-            <!-- Controles inferiores (Etiqueta MP4 y Selector de Calidad) -->
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-size:10px; color:#64748b; border:1px solid #cbd5e1; padding:2px 5px; border-radius:4px; background:#f8fafc; font-weight:500;">
                 MP4
@@ -73,7 +72,7 @@ async function cargarVideos() {
             </div>
           </div>
 
-          <!-- Botón Azul de descarga a la derecha -->
+          <!-- Botón de descarga -->
           <button class="btn-descargar-azul" data-url="${urlFinal}" style="background-color:#007bff; color:white; border:none; padding:8px 12px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; margin-left:10px; flex-shrink:0; transition: background 0.2s;">
             Descargar
           </button>
@@ -82,15 +81,13 @@ async function cargarVideos() {
         resultado.appendChild(tarjeta);
       });
 
-      // Configurar la acción del botón de descarga azul
+      // Configurar acción del botón de descarga
       document.querySelectorAll(".btn-descargar-azul").forEach(btn => {
-        btn.style.addEventListener ? null : btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
+        btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
         btn.onmouseleave = () => btn.style.backgroundColor = '#007bff';
         
         btn.addEventListener("click", (e) => {
           const urlVideo = e.target.getAttribute("data-url");
-          
-          // Por ahora copia la URL de manera inteligente, avisando al usuario
           navigator.clipboard.writeText(urlVideo);
           e.target.textContent = "¡Copiado! ✅";
           e.target.style.backgroundColor = "#28a745";
@@ -117,4 +114,3 @@ botonLimpiar.addEventListener("click", async () => {
     resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Lista limpiada correctamente. 🗑️</p>";
   });
 });
-                     
