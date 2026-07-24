@@ -1,18 +1,28 @@
 console.log("MiHelper: content.js cargado y escaneando...");
 
-// Escuchamos el mensaje que nos envíe el popup pidiendo los videos
+// Escuchamos si el popup nos pide los datos visuales del reproductor de la página
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "detectarVideos") {
-    let videosEncontrados = [];
+  if (request.action === "obtenerDatosFisicosVideo") {
+    const video = document.querySelector("video");
+    if (video) {
+      // Calculamos los minutos y segundos reales
+      const totalSegundos = video.duration || 0;
+      const minutos = Math.floor(totalSegundos / 60);
+      const segundos = Math.floor(totalSegundos % 60).toString().padStart(2, '0');
+      const duracionFormateada = totalSegundos > 0 ? `${minutos}:${segundos}` : "En vivo / Desconocido";
 
-    // 1. Buscar en etiquetas de video estándar (<video src="...">)
-    const elementosVideo = document.querySelectorAll("video, source");
-    elementosVideo.forEach(el => {
-      const url = el.src || el.currentSrc;
-      if (url && (url.includes(".mp4") || url.includes(".m3u8") || url.includes("blob:"))) {
-        if (!videosEncontrados.includes(url)) videosEncontrados.push(url);
-      }
-    });
+      sendResponse({
+        titulo: document.title || "Video Detectado",
+        duracion: duracionFormateada,
+        poster: video.poster || "" // Si tiene una imagen de portada asignada
+      });
+    } else {
+      sendResponse({ titulo: document.title || "Video Detectado", duracion: "00:00", poster: "" });
+    }
+  }
+  return true;
+});
+
 
     // 2. Buscar enlaces de video ocultos en el código HTML de la página (textos/scripts)
     const htmlCompleto = document.documentElement.innerHTML;
