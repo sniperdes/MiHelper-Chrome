@@ -2,22 +2,44 @@ const botonAnalizar = document.getElementById("analizar");
 const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
 
+// Variable global para verificar si el motor ya fue inyectado
+let hlsCargado = false;
+
+// Función para descargar e inyectar el motor HLS en caliente
+async function inyectarMotorHLS() {
+  if (hlsCargado || typeof Hls !== 'undefined') return true;
+  try {
+    const respuesta = await fetch("https://jsdelivr.net");
+    const codigoTexto = await respuesta.text();
+    
+    // Inyectamos de forma segura el script descargado en la sesión activa del popup
+    const scriptTag = document.createElement("script");
+    scriptTag.textContent = codigoTexto;
+    document.head.appendChild(scriptTag);
+    hlsCargado = true;
+    return true;
+  } catch (error) {
+    console.log("Error cargando el reproductor dinámico:", error);
+    return false;
+  }
+}
+
 async function cargarVideos() {
-  resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Cargando flujos multimedia... 🔍</p>";
+  resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Inicializando reproductor multimedia... 🔍</p>";
   
+  // 1. Forzamos la descarga del motor HLS de forma interna antes de pintar la lista
+  const motorListo = await inyectarMotorHLS();
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
 
-  // Solicitamos los enlaces capturados al background.js
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
     if (response && response.videos && response.videos.length > 0) {
-      resultado.innerHTML = ""; // Limpiamos el texto de carga
+      resultado.innerHTML = ""; 
 
       response.videos.forEach((item, index) => {
         const urlFinal = typeof item === 'string' ? item : item.url;
         const nombreLimpio = (tab.title || "Video Detectado").replace(" - Google Chrome", "");
-        
-        // Creamos un ID único para cada minireproductor de video de la lista
         const videoId = `mini-reproductor-${index}`;
 
         const tarjeta = document.createElement("div");
@@ -31,7 +53,7 @@ async function cargarVideos() {
         tarjeta.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
 
         tarjeta.innerHTML = `
-          <!-- Miniatura interactiva: Etiqueta de video real en bucle y silenciada -->
+          <!-- Miniatura interactiva de video -->
           <div style="position:relative; width:95px; height:55px; background:#000; border-radius:6px; overflow:hidden; margin-right:12px; flex-shrink:0;">
             <video id="${videoId}" muted loop playsinline style="width:100%; height:100%; object-fit:cover; display:block;"></video>
             <div style="position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,0.8); color:#fff; font-size:9px; padding:1px 4px; border-radius:4px; font-weight:bold;">
@@ -66,34 +88,25 @@ async function cargarVideos() {
 
         resultado.appendChild(tarjeta);
 
-        // ACTIVACIÓN DEL MINI-REPRODUCTOR EN TIEMPO REAL
         const elementoVideo = document.getElementById(videoId);
         
-        // Si el enlace es un flujo HLS (.m3u8), usamos la librería Hls.js para acoplarlo
-        if (urlFinal.includes(".m3u8")) {
+        // Ejecución condicional del minireproductor usando el motor inyectado
+        if (urlFinal.includes(".m3u8") && motorListo && typeof Hls !== 'undefined') {
           if (Hls.isSupported()) {
             const hls = new Hls();
             hls.loadSource(urlFinal);
             hls.attachMedia(elementoVideo);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              elementoVideo.play().catch(e => console.log("Auto-play bloqueado:", e));
-            });
-          } 
-          // Soporte nativo extra para navegadores basados en Safari/Apple si fuera necesario
-          else if (elementoVideo.canPlayType('application/vnd.apple.mpegurl')) {
-            elementoVideo.src = urlFinal;
-            elementoVideo.addEventListener('loadedmetadata', () => {
-              elementoVideo.play().catch(e => console.log("Auto-play bloqueado:", e));
+              elementoVideo.play().catch(e => console.log("Bloqueo de reproducción:", e));
             });
           }
         } else {
-          // Si es un archivo .mp4 común directo, lo reproducimos de forma nativa estándar
           elementoVideo.src = urlFinal;
-          elementoVideo.play().catch(e => console.log("Auto-play bloqueado:", e));
+          elementoVideo.play().catch(e => console.log("Bloqueo de reproducción:", e));
         }
       });
 
-      // Configurar acción del botón de copia inteligente/descarga
+      // Configurar acción del botón
       document.querySelectorAll(".btn-descargar-azul").forEach(btn => {
         btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
         btn.onmouseleave = () => btn.style.backgroundColor = '#007bff';
@@ -112,7 +125,7 @@ async function cargarVideos() {
       });
 
     } else {
-      resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>No se han detectado flujos de video. Intenta darle Play al reproductor multimedia de la web. ❌</p>";
+      resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>No se han detectado flujos de video. Re-reproduce el video e intenta otra vez. ❌</p>";
     }
   });
 }
