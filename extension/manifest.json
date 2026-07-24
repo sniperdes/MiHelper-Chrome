@@ -1,19 +1,18 @@
 {
   "manifest_version": 3,
   "name": "MiHelper",
-  "version": "0.1",
-  "description": "Detector de recursos multimedia.",
+  "version": "0.2",
+  "description": "Detector de recursos multimedia por Red.",
   "permissions": [
-    "activeTab",
-    "scripting"
+    "webRequest"
   ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ]
+  }
 }
