@@ -1,2 +1,6 @@
+const boton = document.getElementById("analizar");
+const resultado = document.getElementById("resultado");
 
-console.log("MiHelper iniciado");
+boton.addEventListener("click", () => {
+  resultado.textContent = "Botón funcionando ✅";
+});
