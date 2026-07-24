@@ -39,10 +39,10 @@ async function cargarVideos() {
         tarjeta.style.marginBottom = "10px";
         tarjeta.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
 
-        // Si la página web no ofrece miniatura, usamos un fondo gris con un emoji de cine
+        // Busca esta sección en tu popup.js y reemplázala:
         const imagenMiniatura = datosVideo.poster 
-          ? `<img src="${datosVideo.poster}" style="width:100%; height:100%; object-fit:cover;">`
-          : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:20px;">🎬</div>`;
+        ? `<img src="${datosVideo.poster}" style="width:100%; height:100%; object-fit:cover; display:block;">`
+        : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:20px;">🎬</div>`;
 
         tarjeta.innerHTML = `
           <!-- Miniatura con tiempo flotante a la izquierda -->
