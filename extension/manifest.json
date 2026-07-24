@@ -9,6 +9,10 @@
   "host_permissions": [
     "<all_urls>"
   ],
+    "permissions": [
+    "webRequest",
+    "activeTab"
+  ],
   "background": {
     "service_worker": "background.js"
   },
