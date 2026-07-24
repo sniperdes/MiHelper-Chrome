@@ -1,58 +1,72 @@
-const boton = document.getElementById("analizar");
+const botonAnalizar = document.getElementById("analizar");
+const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
 
-boton.addEventListener("click", async () => {
-  resultado.innerHTML = "Buscando flujos de video... 🔍";
-
-  // Identificamos cuál es la pestaña activa actual del usuario
+// Función para solicitar y renderizar los videos
+async function cargarVideos() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  
-  if (!tab) {
-    resultado.textContent = "Error al identificar la pestaña.";
-    return;
-  }
+  if (!tab) return;
 
-  // Le pedimos al background.js los videos capturados para el ID de esta pestaña
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
-    
+    if (chrome.runtime.lastError) {
+      resultado.textContent = "Error de comunicación con la extensión.";
+      return;
+    }
+
     if (response && response.videos && response.videos.length > 0) {
-      resultado.innerHTML = `<strong>¡Videos capturados en la red (${response.videos.length})!</strong><br><br>`;
+      resultado.innerHTML = `<p><strong>Enlaces detectados (${response.videos.length}):</strong></p>`;
       
-      const lista = document.createElement("ol");
-      lista.style.paddingLeft = "15px";
-      lista.style.wordBreak = "break-all";
+      const contenedor = document.createElement("div");
 
-      response.videos.forEach((url) => {
-        const elemento = document.createElement("li");
-        elemento.style.marginBottom = "12px";
+      response.videos.forEach((item) => {
+        const tarjeta = document.createElement("div");
+        tarjeta.style.background = "#f1f3f5";
+        tarjeta.style.border = "1px solid #dee2e6";
+        tarjeta.style.borderRadius = "5px";
+        tarjeta.style.padding = "10px";
+        tarjeta.style.marginBottom = "10px";
 
-        // Identificar formato para la etiqueta visual
-        let tipo = "📹 VIDEO";
-        if (url.toLowerCase().includes(".m3u8")) tipo = "🔴 HLS / M3U8";
-        if (url.toLowerCase().includes(".mp4")) tipo = "🔵 MP4";
-
-        elemento.innerHTML = `
-          <small style="background:#eee; padding:2px 4px; border-radius:3px;"><strong>${tipo}</strong></small><br>
-          <textarea readonly style="width:90%; height:40px; margin-top:4px; font-size:10px;">${url}</textarea><br>
-          <button class="btn-copiar" data-url="${url}" style="cursor:pointer; padding:3px 8px; margin-top:2px;">Copiar Enlace</button>
+        tarjeta.innerHTML = `
+          <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px;">
+            <span style="font-weight: bold; color: #495057;">${item.tipo}</span>
+            <span style="color: #868e96;">${item.hora}</span>
+          </div>
+          <textarea readonly>${item.url}</textarea>
+          <div style="margin-top: 5px;">
+            <button class="btn-copiar" data-url="${item.url}">Copiar Enlace</button>
+          </div>
         `;
-        lista.appendChild(elemento);
+        contenedor.appendChild(tarjeta);
       });
 
-      resultado.appendChild(lista);
+      resultado.appendChild(contenedor);
 
-      // Activamos la funcionalidad de los botones copiar
+      // Configurar botones de copiado
       document.querySelectorAll(".btn-copiar").forEach(btn => {
         btn.addEventListener("click", (e) => {
           const urlACopiar = e.target.getAttribute("data-url");
           navigator.clipboard.writeText(urlACopiar);
-          e.target.textContent = "¡Copiado! Clipboard ✅";
-          setTimeout(() => e.target.textContent = "Copiar Enlace", 2000);
+          e.target.textContent = "¡Copiado! ✅";
+          setTimeout(() => e.target.textContent = "Copiar Enlace", 1500);
         });
       });
 
     } else {
-      resultado.textContent = "No se ha transmitido ningún video en la red aún. Intenta reproducir el video en la página y haz clic de nuevo. ❌";
+      resultado.textContent = "No se han detectado videos en esta pestaña aún. ❌";
     }
   });
+}
+
+// Evento para el botón Analizar
+botonAnalizar.addEventListener("click", cargarVideos);
+
+// Evento para el botón Limpiar
+botonLimpiar.addEventListener("click", async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+
+  chrome.runtime.sendMessage({ action: "limpiarVideos", tabId: tab.id }, () => {
+    resultado.textContent = "Lista limpiada correctamente. 🗑️";
+  });
 });
+                              
