@@ -106,7 +106,7 @@ async function cargarVideos() {
         }
       });
 
-            // Configuración de los botones de descarga REAL
+       // Configuración de los botones de descarga REAL (Corregido)
       document.querySelectorAll(".btn-descargar-azul").forEach(btn => {
         btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
         btn.onmouseleave = () => btn.style.backgroundColor = '#007bff';
@@ -114,18 +114,18 @@ async function cargarVideos() {
         btn.addEventListener("click", (e) => {
           const urlVideo = e.target.getAttribute("data-url");
           
-          // Generamos un nombre limpio para el archivo usando el título de la página
-          const nombreArchivo = `${nombreLimpio.substring(0, 30)}.mp4`;
+          // CORRECCIÓN: Tomamos el título directamente del objeto 'tab' que ya tenemos disponible
+          const tituloPestaña = (tab.title || "Video Detectado").replace(" - Google Chrome", "");
+          const nombreArchivo = `${tituloPestaña.substring(0, 30).trim()}.mp4`;
 
           // API NATIVA DE CHROME: Inicia la descarga directo a tu PC
           chrome.downloads.download({
             url: urlVideo,
             filename: nombreArchivo,
-            saveAs: true // Muestra la ventana de "Guardar como" para que elijas dónde ponerlo
+            saveAs: true // Muestra la ventana de "Guardar como"
           }, (downloadId) => {
             if (chrome.runtime.lastError) {
-              // Si falla (por ejemplo, porque es un .m3u8 puro que requiere un programa externo)
-              // Al menos le copiamos el link al usuario para que no se quede con las manos vacías
+              // Si el servidor bloquea la descarga directa (CORS), copiamos el link como respaldo
               navigator.clipboard.writeText(urlVideo);
               e.target.textContent = "Link Copiado 📋";
               e.target.style.backgroundColor = "#eab308";
@@ -142,6 +142,7 @@ async function cargarVideos() {
           });
         });
       });
+
 
 
     } else {
