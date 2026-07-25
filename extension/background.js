@@ -1,5 +1,5 @@
 const videosPorPestaña = {};
-const descargasActivas = {}; // Almacena el progreso de lo que se está bajando
+const descargasActivas = {}; 
 
 chrome.webRequest.onBeforeRequest.addListener(
   (detalles) => {
@@ -19,134 +19,60 @@ chrome.webRequest.onBeforeRequest.addListener(
   { urls: ["<all_urls>"] }
 );
 
-// LÓGICA AVANZADA DE DESCARGA POR FRAGMENTOS (STREAM DOWNLOADER)
-async function iniciarDescargaHLS(urlM3u8, tabId, nombreArchivo) {
-  try {
-    descargasActivas[urlM3u8] = { progreso: 0, velocidad: "0 MB/s", estado: "descargando" };
-    notificarPopup();
-
-    // 1. Descargar el archivo indexador .m3u8
-    const respuesta = await fetch(urlM3u8);
-    const textoM3u8 = await respuesta.text();
-    
-    // 2. Extraer las URLs de los fragmentos de video (.ts)
-    const lineas = textoM3u8.split("\n");
-    const baseUrl = urlM3u8.substring(0, urlM3u8.lastIndexOf("/") + 1);
-    const urlsFragmentos = [];
-
-    lineas.forEach(linea => {
-      linea = linea.trim();
-      if (linea && !linea.startsWith("#")) {
-        // Si la URL es relativa, le pegamos la base
-        if (!linea.startsWith("http")) {
-          urlsFragmentos.push(baseUrl + linea);
-        } else {
-          urlsFragmentos.push(linea);
-        }
-      }
-    });
-
-    if (urlsFragmentos.length === 0) {
-      descargasActivas[urlM3u8].estado = "error";
-      notificarPopup();
-      return;
-    }
-
-    const totalFragmentos = urlsFragmentos.length;
-    const bloquesDescargados = [];
-    let tiempoInicio = Date.now();
-    let bytesDescargadosEnSegundo = 0;
-
-    // 3. Descargar los fragmentos uno por uno en bucle
-    for (let i = 0; i < totalFragmentos; i++) {
-      // Verificamos si el usuario canceló la descarga
-      if (!descargasActivas[urlM3u8] || descargasActivas[urlM3u8].estado === "cancelado") return;
-
-      const resFrag = await fetch(urlsFragmentos[i]);
-      const buffer = await resFrag.arrayBuffer();
-      bloquesDescargados.push(new Uint8Array(buffer));
-
-      bytesDescargadosEnSegundo += buffer.byteLength;
-
-      // Calcular velocidad cada segundo
-      let tiempoActual = Date.now();
-      if (tiempoActual - tiempoInicio >= 1000) {
-        let mbs = (bytesDescargadosEnSegundo / (1024 * 1024)).toFixed(2);
-        descargasActivas[urlM3u8].velocidad = `${mbs} MB/s`;
-        bytesDescargadosEnSegundo = 0;
-        tiempoInicio = tiempoActual;
-      }
-
-      // Calcular porcentaje real
-      descargasActivas[urlM3u8].progreso = Math.floor(((i + 1) / totalFragmentos) * 100);
-      notificarPopup();
-    }
-
-        // 4. ENSAMBLADO SEGURO MEDIANTE OFFSCREEN (Solución definitiva Manifest V3)
-    descargasActivas[urlM3u8].estado = "ensamblando";
-    notificarPopup();
-
-    // Convertimos los bloques a formatos planos de transferencia para enviarlos al motor
-    const bloquesSerializados = bloquesDescargados.map(b => Array.from(b));
-
-    // Creamos la ventana invisible de procesamiento de descargas
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['LOCAL_STORAGE'], // Motivo estandar aceptado por Chrome para usar APIs del DOM
-      justification: 'Ensamblador de flujos multimedia HLS'
-    });
-
-    // Le enviamos los fragmentos de video reunidos al offscreen para que los baje a la PC
-    chrome.runtime.sendMessage({
-      action: "ensamblarYDescargarNativo",
-      bloques: bloquesSerializados,
-      nombre: nombreArchivo
-    }, () => {
-      // Una vez guardado el archivo en tu PC, destruimos la ventana invisible de la RAM
-      chrome.offscreen.closeDocument();
-      delete descargasActivas[urlM3u8];
-      notificarPopup();
-    });
-
-    reader.readAsDataURL(blobFinal);
-
-  } catch (error) {
-    console.error("Error en el motor de descarga:", error);
-    if (descargasActivas[urlM3u8]) {
-      descargasActivas[urlM3u8].estado = "error";
-      notificarPopup();
-    }
-  }
-}
-
-// Avisar a la ventanita popup de los cambios de porcentaje
-function notificarPopup() {
-  chrome.runtime.sendMessage({ action: "actualizarProgresoGlobal", descargas: descargasActivas }).catch(() => {
-    // Ignorar error si el popup está cerrado
-  });
-}
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "reportarProgresoDesdeOffscreen") {
+    descargasActivas[request.url] = { 
+      progreso: request.progreso, 
+      velocidad: request.velocidad, 
+      estado: request.estado 
+    };
+    if (request.estado === "finalizado") {
+      delete descargasActivas[request.url];
+    }
+    chrome.runtime.sendMessage({ action: "actualizarProgresoGlobal", descargas: descargasActivas }).catch(() => {});
+    sendResponse({ ok: true });
+  }
+
   if (request.action === "obtenerVideosDeRed") {
     sendResponse({ videos: videosPorPestaña[request.tabId] || [], descargas: descargasActivas });
   }
+  
   if (request.action === "limpiarVideos") {
     videosPorPestaña[request.tabId] = [];
     sendResponse({ num: 0 });
   }
+
   if (request.action === "procesarDescargaHLS") {
-    iniciarDescargaHLS(request.url, request.tabId, request.nombre);
+    crearYEjecutarOffscreen(request.url, request.nombre);
     sendResponse({ iniciado: true });
-  }
-  if (request.action === "cancelarDescargaHLS") {
-    if (descargasActivas[request.url]) {
-      descargasActivas[request.url].estado = "cancelado";
-      delete descargasActivas[request.url];
-    }
-    sendResponse({ cancelado: true });
   }
   return true;
 });
+
+async function crearYEjecutarOffscreen(url, nombre) {
+  try {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['LOCAL_STORAGE'],
+      justification: 'Descarga activa de flujos multimedia'
+    });
+    
+    setTimeout(() => {
+      chrome.runtime.sendMessage({
+        action: "iniciarDescargaDesdeCero",
+        url: url,
+        nombre: nombre
+      }).catch(() => {});
+    }, 500);
+
+  } catch (e) {
+    chrome.runtime.sendMessage({
+      action: "iniciarDescargaDesdeCero",
+      url: url,
+      nombre: nombre
+    }).catch(() => {});
+  }
+}
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (videosPorPestaña[tabId]) delete videosPorPestaña[tabId];
