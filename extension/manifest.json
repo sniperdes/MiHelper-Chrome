@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "MiHelper",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Detector de recursos multimedia ultra estable.",
   "permissions": [
-    "webRequest"
+    "webRequest",
+    "downloads"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -16,4 +17,3 @@
     "default_popup": "popup.html"
   }
 }
-
