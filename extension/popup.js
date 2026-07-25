@@ -136,14 +136,20 @@ chrome.runtime.onMessage.addListener((mensaje) => {
     });
   }
 
-  // Actualizaciones de streams M3U8 por fragmentos
+  // Actualizaciones de streams M3U8 por fragmentos en tiempo real
   if (mensaje.action === "progresoDescarga") {
-    const statusTxts = document.querySelectorAll(`[id^="status-txt-"]`);
-    statusTxts.forEach((txt) => {
-      txt.textContent = `Descargando fragmentos... ${mensaje.porcentaje}%`;
+    const botones = document.querySelectorAll(".btn-descargar-inteligente");
+    botones.forEach((btn) => {
+      if (btn.getAttribute("data-url") === mensaje.url) {
+        const index = btn.getAttribute("data-index");
+        btn.textContent = `${mensaje.porcentaje}%`;
+        
+        const statusTxt = document.getElementById(`status-txt-${index}`);
+        if (statusTxt) statusTxt.textContent = `Descargando fragmentos...`;
+      }
     });
   }
-});
+
 
 // Botón de limpieza de caché de videos capturados
 botonLimpiar.addEventListener("click", async () => {
