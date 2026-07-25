@@ -26,7 +26,7 @@ function solicitarDatos() {
   
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tabGlobal.id }, (response) => {
     if (chrome.runtime.lastError || !response) return;
-
+      actualizarEstado("✅ Se detectaron " + response.videos.length + " video(s)");
     if (response.videos && response.videos.length > 0) {
       resultado.innerHTML = ""; 
 
@@ -37,7 +37,7 @@ function solicitarDatos() {
         const esM3u8 = urlFinal.toLowerCase().includes(".m3u8");
         
         // Buscamos si este enlace específico se está descargando en el motor offscreen
-        const datosDescarga = response.descargas ? response.descargas[urlFinal] : null;
+        const datosDescarga = null;
         const videoId = `mini-reproductor-${index}`;
 
         const tarjeta = document.createElement("div");
@@ -107,7 +107,7 @@ console.log("URL:", urlVideo);
 console.log("Nombre:", nombreArchivo);
 
 chrome.runtime.sendMessage({
-            action: "procesarDescargaHLS",
+            action: "procesarDescarga",
             url: urlVideo,
             tabId: tabGlobal.id,
             nombre: nombreArchivo
