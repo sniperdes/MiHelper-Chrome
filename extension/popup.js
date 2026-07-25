@@ -3,9 +3,16 @@ const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
 
 let tabGlobal = null;
-
+function actualizarEstado(texto) {
+  const estado = document.getElementById("estado");
+  if (estado) {
+    estado.textContent = texto;
+  }
+  console.log("[MiHelper]", texto);
+}
 async function cargarVideos() {
-  resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Analizando transmisiones... 🔍</p>";
+  actualizarEstado("🔍 Analizando transmisiones...");
+resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Analizando transmisiones... 🔍</p>";
   
   const pestañas = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!pestañas || pestañas.length === 0) return;
@@ -93,17 +100,36 @@ function solicitarDatos() {
           const nombreArchivo = `${(tabGlobal.title || "video").substring(0, 20).trim()}.mp4`;
           
           e.target.textContent = "Iniciando...";
-          e.target.style.backgroundColor = "#64748b";
+e.target.style.backgroundColor = "#64748b";
 
-          chrome.runtime.sendMessage({
+actualizarEstado("🚀 Enviando descarga...");
+console.log("URL:", urlVideo);
+console.log("Nombre:", nombreArchivo);
+
+chrome.runtime.sendMessage({
             action: "procesarDescargaHLS",
             url: urlVideo,
             tabId: tabGlobal.id,
             nombre: nombreArchivo
-          }, () => {
-            // Forzamos un refresco inmediato para ocultar el botón y mostrar la barra
-            setTimeout(solicitarDatos, 300);
-          });
+          }, (response) => {
+
+  if (chrome.runtime.lastError) {
+    actualizarEstado("❌ Error: " + chrome.runtime.lastError.message);
+    console.error(chrome.runtime.lastError);
+    return;
+  }
+
+  console.log("Respuesta del background:", response);
+
+  if (response && response.iniciado) {
+    actualizarEstado("✅ Descarga iniciada");
+  } else {
+    actualizarEstado("⚠️ El background respondió, pero no inició la descarga");
+  }
+
+  setTimeout(solicitarDatos, 300);
+
+});
         });
       });
 
