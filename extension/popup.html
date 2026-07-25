@@ -1,60 +1,224 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>MiHelper</title>
+  <title>MiHelper Pro</title>
   <style>
     body {
-      width: 420px;
-      min-height: 200px;
+      width: 440px;
       margin: 0;
-      padding: 15px;
+      padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background-color: #f8fafc;
+      background-color: #f1f5f9;
+      user-select: none;
     }
-    h2 {
-      margin-top: 0;
-      font-size: 16px;
-      color: #1e293b;
+    
+    /* Encabezado e Interfaz Superior */
+    .header-bar {
+      background-color: #ffffff;
+      padding: 12px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 8px;
     }
-    #analizar {
-      width: 100%;
-      background-color: #0f172a;
-      color: white;
-      border: none;
-      padding: 10px;
-      font-size: 13px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
+    .header-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    #analizar:hover { background-color: #1e293b; }
-    #limpiar {
-      width: 100%;
-      background-color: #edf2f7;
-      color: #4a5568;
-      border: none;
+    .premium-banner {
+      display: block;
+      text-align: center;
+      background-color: #fffbeb;
+      color: #b45309;
       padding: 6px;
       font-size: 11px;
-      margin-top: 6px;
-      border-radius: 6px;
-      cursor: pointer;
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 1px solid #fef3c7;
     }
-    #limpiar:hover { background-color: #e2e8f0; }
-    #resultado { margin-top: 15px; }
+    .premium-banner:hover { background-color: #fef3c7; }
+
+    /* Contenedor de Videos */
+    #resultado {
+      padding: 12px;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+    
+    .sin-videos {
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+      padding: 30px 10px;
+    }
+
+    /* Tarjeta de Video Identica a tu Referencia */
+    .video-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #e2e8f0;
+    }
+    
+    .video-meta {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      position: relative;
+    }
+
+    /* Miniatura simulada */
+    .video-thumbnail {
+      width: 110px;
+      height: 65px;
+      background-color: #1e293b;
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .thumbnail-overlay {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fcd34d;
+      font-size: 10px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-weight: bold;
+    }
+    .thumbnail-icon {
+      font-size: 20px;
+    }
+
+    .video-details {
+      flex-grow: 1;
+      min-width: 0;
+    }
+    .video-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1e293b;
+      margin: 0 0 8px 0;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-all;
+    }
+
+    /* Botones de acción rápidos */
+    .action-group {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    
+    .btn-icon {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-icon:hover { background: #e2e8f0; }
+
+    .btn-main {
+      background-color: #10b981;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-main:hover { background-color: #059669; }
+    .btn-main.downloading { background-color: #3b82f6; }
+
+    /* Estado de carga inferior (Progreso unificado) */
+    .status-container {
+      border-top: 1px dashed #cbd5e1;
+      margin-top: 10px;
+      padding-top: 8px;
+      font-size: 11px;
+      color: #475569;
+    }
+    .status-top {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .status-text { font-weight: 600; color: #0f172a; }
+    .status-domain {
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Barra de herramientas inferior del popup */
+    .footer-bar {
+      background-color: #ffffff;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #e2e8f0;
+    }
+    .btn-footer {
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .btn-footer:hover { background: #f1f5f9; color: #1e293b; }
   </style>
 </head>
 <body>
 
-  <h2>MiHelper 📹</h2>
+  <a href="#" class="premium-banner">🚀 Descargar sin límites - Ir a premium</a>
 
-  <button id="analizar">Analizar página</button>
-  <button id="limpiar">Limpiar Capturas 🗑️</button>
+  <div class="header-bar">
+    <h2 class="header-title">MiHelper Multimedia 📹</h2>
+    <button id="limpiar" class="btn-footer" style="color: #ef4444;">Limpiar todo 🗑️</button>
+  </div>
 
-  <div id="resultado"></div>
+  <!-- Contenedor principal donde se inyectan las tarjetas dinámicas -->
+  <div id="resultado">
+    <div class="sin-videos">Reproduce un video en la página para detectarlo...</div>
+  </div>
+
+  <div class="footer-bar">
+    <button class="btn-footer" id="btn-config">⚙️</button>
+    <button class="btn-footer" id="btn-ayuda">¿No hay video? ❓</button>
+  </div>
 
   <script src="popup.js"></script>
 </body>
