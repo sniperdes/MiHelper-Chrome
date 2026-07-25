@@ -1,36 +1,42 @@
-// Listener para capturar videos sin bloquear la navegación (Ultra estable)
-chrome.webRequest.onBeforeRequest.addListener(
-  async (detalles) => {
-    const url = detalles.url;
-    const tabId = detalles.tabId;
+// Variable temporal para evitar colisiones si se duerme el Service Worker
+let cacheVideos = {};
 
-    if (tabId === -1 || !tabId) return;
+// Inicializar el analizador de red de forma segura
+try {
+  chrome.webRequest.onBeforeRequest.addListener(
+    (detalles) => {
+      const url = detalles.url;
+      const tabId = detalles.tabId;
 
-    // Filtro para ignorar publicidad obvia
-    if (url.includes("ads") || url.includes("analytics") || url.includes("popads") || url.includes("adsterra")) return;
+      if (tabId === -1 || !tabId) return;
 
-    // Captura flujos de video reales
-    if (url.includes(".mp4") || url.includes(".m3u8") || url.includes(".m4s") || url.includes(".ts")) {
-      
-      // Recuperar de almacenamiento persistente porque el Service Worker se duerme
-      const data = await chrome.storage.local.get("videosPorPestaña");
-      const videosPorPestaña = data.videosPorPestaña || {};
+      // Filtro estricto para ignorar publicidad molesta
+      if (url.includes("ads") || url.includes("analytics") || url.includes("popads") || url.includes("adsterra")) return;
 
-      if (!videosPorPestaña[tabId]) {
-        videosPorPestaña[tabId] = [];
+      // Captura flujos de video reales
+      if (url.includes(".mp4") || url.includes(".m3u8") || url.includes(".m4s") || url.includes(".ts")) {
+        
+        chrome.storage.local.get("videosPorPestaña").then((data) => {
+          const videosPorPestaña = data.videosPorPestaña || {};
+
+          if (!videosPorPestaña[tabId]) {
+            videosPorPestaña[tabId] = [];
+          }
+          
+          if (!videosPorPestaña[tabId].includes(url)) {
+            videosPorPestaña[tabId].push(url);
+            chrome.storage.local.set({ videosPorPestaña });
+          }
+        }).catch(err => console.log("Error de almacenamiento temporal:", err));
       }
-      
-      if (!videosPorPestaña[tabId].includes(url)) {
-        videosPorPestaña[tabId].push(url);
-        // Guardar de forma persistente
-        await chrome.storage.local.set({ videosPorPestaña });
-      }
-    }
-  },
-  { urls: ["<all_urls>"] }
-);
+    },
+    { urls: ["<all_urls>"] }
+  );
+} catch (error) {
+  console.error("Error crítico al registrar el capturador de red:", error);
+}
 
-// Gestión de mensajes del Popup y control de Descargas Activas
+// Gestión de mensajes asíncronos del Popup y descargas
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.action === "obtenerVideosDeRed") {
@@ -38,7 +44,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const videosPorPestaña = data.videosPorPestaña || {};
       sendResponse({ videos: videosPorPestaña[request.tabId] || [] });
     });
-    return true; // Mantiene el canal abierto asíncronamente
+    return true; 
   }
 
   if (request.action === "limpiarVideos") {
@@ -52,22 +58,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // LOGICA DE DESCARGA DESDE SEGUNDO PLANO
   if (request.action === "iniciarDescarga") {
     const videoUrl = request.url;
+    const tabId = request.tabId;
     
     if (videoUrl.includes(".m3u8")) {
-      // Si es una lista M3U8, requiere procesamiento por fragmentos
-      procesarYDescargarM3U8(videoUrl, request.tabId);
+      procesarYDescargarM3U8(videoUrl, tabId);
     } else {
-      // Si es MP4 directo, usamos la API nativa directamente
       chrome.downloads.download({
         url: videoUrl,
         filename: request.nombreArchivo || "video_descargado.mp4",
         conflictAction: "uniq"
       }, (downloadId) => {
-        // Informamos al popup el ID de descarga para controlar botones de reproducción
-        chrome.runtime.sendMessage({ action: "descargaIniciada", downloadId, tabId: request.tabId });
+        chrome.runtime.sendMessage({ 
+          action: "descargaIniciada", 
+          downloadId: downloadId, 
+          url: videoUrl, 
+          tabId: tabId 
+        });
       });
     }
     sendResponse({ procesando: true });
@@ -75,7 +83,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-// Limpieza al cerrar pestañas
+// Limpieza automatica al cerrar pestañas activas
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const data = await chrome.storage.local.get("videosPorPestaña");
   const videosPorPestaña = data.videosPorPestaña || {};
@@ -85,35 +93,25 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-// Función base para descargar transmisiones M3U8 de forma asíncrona
+// Gestor de transmisiones HLS continuas
 async function procesarYDescargarM3U8(url, tabId) {
   try {
-    // 1. Notificar al popup que empezó el procesamiento
-    chrome.runtime.sendMessage({ action: "progresoDescarga", porcentaje: 5, tabId });
+    chrome.runtime.sendMessage({ action: "progresoDescarga", porcentaje: 15, tabId });
 
-    const respuesta = await fetch(url);
-    const textoM3u8 = await respuesta.text();
-    
-    // Filtro simple para obtener las líneas de segmentos (.ts)
-    const lineas = textoM3u8.split("\n");
-    const segmentosUrls = lineas.filter(linea => linea.trim() !== "" && !linea.startsWith("#"));
-
-    if (segmentosUrls.length === 0) {
-      chrome.runtime.sendMessage({ action: "errorDescarga", error: "No se encontraron fragmentos de video.", tabId });
-      return;
-    }
-
-    // Para evitar congelamientos, en lugar de descargar 300 fragmentos en memoria local por JS,
-    // si el servidor permite acceso directo, descargamos la lista de reproducción mapeada
-    // o enviamos el flujo corregido. Para videos protegidos, forzamos la descarga del archivo índice:
+    // Forzamos la descarga directa del manifiesto estructurado
     chrome.downloads.download({
       url: url,
-      filename: "stream_lista.m3u8",
+      filename: "video_streaming.m3u8",
       conflictAction: "uniq"
+    }, (downloadId) => {
+      chrome.runtime.sendMessage({ 
+        action: "descargaIniciada", 
+        downloadId: downloadId, 
+        url: url, 
+        tabId: tabId 
+      });
     });
-
-    chrome.runtime.sendMessage({ action: "progresoDescarga", porcentaje: 100, tabId });
   } catch (error) {
-    chrome.runtime.sendMessage({ action: "errorDescarga", error: error.message, tabId });
+    console.error("Error procesando flujo M3U8:", error);
   }
 }
