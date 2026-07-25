@@ -14,13 +14,11 @@ async function cargarVideos() {
     return;
   }
   
-  // EXTRAE LA PESTAÑA REAL (Asegúrate de que tenga el [0] al final de pestañas)
+  // SOLUCIÓN: Extraemos el primer elemento usando el índice [0]
   const tab = pestañas[0]; 
   
   const urlObjeto = new URL(tab.url || "https://localhost");
   const dominioLimpio = urlObjeto.hostname.replace("www.", "");
-  
-  // ... (el resto del archivo popup.js se queda igual)
 
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
     if (chrome.runtime.lastError || !response || !response.videos || response.videos.length === 0) {
@@ -76,18 +74,16 @@ async function cargarVideos() {
         const statusTxt = tarjeta.querySelector(`#status-txt-${index}`);
 
         if (botonAccion.textContent.trim() === "Reproducir") {
-          // Si ya terminó, el botón se convierte en "Reproducir" y abre el archivo en la PC
           const dId = descargasActivas[urlVideo];
           if (dId) chrome.downloads.open(dId);
           return;
         }
 
-        // Si es una descarga nueva, se delega al background.js
         botonAccion.textContent = "Procesando...";
         botonAccion.classList.add("downloading");
         botonAccion.disabled = true;
 
-        const nombreArchivoSeguro = `${nombreLimpio.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 30).trim()}.${esM3u8 ? 'm3u8' : 'mp4'}`;
+        const nombreArchivoSeguro = `${nombreLimpio.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 30).trim()}.${esM3u8 ? 'mp4' : 'mp4'}`;
 
         chrome.runtime.sendMessage({
           action: "iniciarDescarga",
@@ -105,20 +101,17 @@ async function cargarVideos() {
 // Escucha en tiempo real el progreso de las descargas enviadas por el background
 chrome.runtime.onMessage.addListener((mensaje) => {
   if (mensaje.action === "descargaIniciada") {
-    // Al iniciar, mapeamos los botones para cambiar su estado visual al de tu referencia
     const botones = document.querySelectorAll(".btn-descargar-inteligente");
     botones.forEach((btn) => {
       if (btn.getAttribute("data-url") === mensaje.url || btn.textContent === "Procesando...") {
         const index = btn.getAttribute("data-index");
         descargasActivas[mensaje.url] = mensaje.downloadId;
 
-        // Configuración visual completa "Estilo Premium"
         btn.textContent = "Reproducir";
-        btn.style.backgroundColor = "#10b981"; // Cambia a Verde
+        btn.style.backgroundColor = "#10b981"; 
         btn.classList.remove("downloading");
         btn.disabled = false;
 
-        // Mostrar botones de herramientas secundarias
         const btnCarpeta = document.getElementById(`folder-${index}`);
         const btnBorrar = document.getElementById(`delete-${index}`);
         const statusTxt = document.getElementById(`status-txt-${index}`);
@@ -136,7 +129,6 @@ chrome.runtime.onMessage.addListener((mensaje) => {
     });
   }
 
-  // Actualizaciones de streams M3U8 por fragmentos en tiempo real
   if (mensaje.action === "progresoDescarga") {
     const botones = document.querySelectorAll(".btn-descargar-inteligente");
     botones.forEach((btn) => {
@@ -149,7 +141,7 @@ chrome.runtime.onMessage.addListener((mensaje) => {
       }
     });
   }
-
+});
 
 // Botón de limpieza de caché de videos capturados
 botonLimpiar.addEventListener("click", async () => {
