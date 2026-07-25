@@ -1,125 +1,153 @@
-const botonAnalizar = document.getElementById("analizar");
 const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
 
+// Guardamos referencias globales de los ID de descarga vinculados a sus URLs
+let descargasActivas = {};
+
+// Carga automática al abrir el popup
+document.addEventListener("DOMContentLoaded", cargarVideos);
+
 async function cargarVideos() {
-  resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Analizando flujos de red... 🔍</p>";
-  
   const pestañas = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!pestañas || pestañas.length === 0) {
-    resultado.innerHTML = "<p style='font-size:12px; color:#ef4444;'>No se pudo acceder a la pestaña activa.</p>";
+    resultado.innerHTML = '<div class="sin-videos">No se pudo acceder a la pestaña activa.</div>';
     return;
   }
   const tab = pestañas[0];
+  const urlObjeto = new URL(tab.url || "https://localhost");
+  const dominioLimpio = urlObjeto.hostname.replace("www.", "");
 
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
-    if (chrome.runtime.lastError) {
-      resultado.innerHTML = "<p style='font-size:12px; color:#ef4444;'>Error de comunicación. Por favor recarga la página web.</p>";
+    if (chrome.runtime.lastError || !response || !response.videos || response.videos.length === 0) {
+      resultado.innerHTML = '<div class="sin-videos">No se han detectado videos en esta página. Reproduce el video para capturarlo. ❌</div>';
       return;
     }
 
-    if (response && response.videos && response.videos.length > 0) {
-      resultado.innerHTML = ""; 
+    resultado.innerHTML = ""; // Limpiar el indicador base
 
-      response.videos.forEach((urlFinal) => {
-        const nombreLimpio = (tab.title || "Video Detectado").replace(" - Google Chrome", "");
-        const esM3u8 = urlFinal.toLowerCase().includes(".m3u8");
+    response.videos.forEach((urlFinal, index) => {
+      const nombreLimpio = (tab.title || "Video Detectado").replace(" - Google Chrome", "").trim();
+      const esM3u8 = urlFinal.toLowerCase().includes(".m3u8");
 
-        const tarjeta = document.createElement("div");
-        tarjeta.style.display = "flex";
-        tarjeta.style.alignItems = "center";
-        tarjeta.style.background = "#ffffff";
-        tarjeta.style.border = "1px solid #e2e8f0";
-        tarjeta.style.borderRadius = "8px";
-        tarjeta.style.padding = "10px";
-        tarjeta.style.marginBottom = "10px";
-        tarjeta.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
-
-        tarjeta.innerHTML = `
-          <!-- Indicador visual -->
-          <div style="width:40px; height:40px; background:${esM3u8 ? '#fef2f2' : '#f0fdf4'}; border-radius:6px; display:flex; align-items:center; justify-content:center; margin-right:12px; flex-shrink:0; font-size:18px;">
-            ${esM3u8 ? '🔴' : '🔵'}
+      const tarjeta = document.createElement("div");
+      tarjeta.className = "video-card";
+      tarjeta.innerHTML = `
+        <div class="video-meta">
+          <!-- Miniatura Simulada -->
+          <div class="video-thumbnail">
+            <span class="thumbnail-icon">${esM3u8 ? '🎥' : '🎞️'}</span>
+            <span class="thumbnail-overlay">⏱️ 24:01</span>
           </div>
 
-          <!-- Información -->
-          <div style="flex-grow:1; min-width:0;">
-            <p style="font-size:12px; font-weight:600; color:#334155; margin:0 0 4px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${nombreLimpio}">
-              ${nombreLimpio}
-            </p>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:10px; color:${esM3u8 ? '#991b1b' : '#166534'}; background:${esM3u8 ? '#fee2e2' : '#dcfce7'}; padding:2px 6px; border-radius:4px; font-weight:bold;">
-                ${esM3u8 ? 'M3U8 / STREAM' : 'MP4 DIRECTO'}
-              </span>
+          <!-- Detalles del Video -->
+          <div class="video-details">
+            <h4 class="video-title" title="${nombreLimpio}">${nombreLimpio}</h4>
+            
+            <div class="action-group">
+              <button class="btn-icon btn-carpeta" id="folder-${index}" style="display:none;" title="Mostrar en Carpeta">📂</button>
+              <button class="btn-icon btn-borrar" id="delete-${index}" style="display:none;" title="Eliminar archivo">🗑️</button>
+              <button class="btn-main btn-descargar-inteligente" id="action-${index}" data-url="${urlFinal}" data-index="${index}">
+                ${esM3u8 ? 'Descargar Stream' : 'Reproducir'}
+              </button>
             </div>
           </div>
+        </div>
 
-          <!-- Botón Inteligente -->
-          <button class="btn-accion-inteligente" data-url="${urlFinal}" data-m3u8="${esM3u8}" style="background-color:#007bff; color:white; border:none; padding:8px 12px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; margin-left:10px; flex-shrink:0; transition: background 0.2s;">
-            ${esM3u8 ? 'Copiar Link' : 'Descargar'}
-          </button>
-        `;
+        <!-- Estado de Progreso unificado -->
+        <div class="status-container">
+          <div class="status-top">
+            <span class="status-text" id="status-txt-${index}">${esM3u8 ? 'Stream Detectado' : 'Disponible para descargar'}</span>
+          </div>
+          <span class="status-domain">${dominioLimpio}</span>
+        </div>
+      `;
 
-        resultado.appendChild(tarjeta);
-      });
+      resultado.appendChild(tarjeta);
 
-      // Nueva lógica de botones de descarga nativa
-      document.querySelectorAll(".btn-accion-inteligente").forEach(btn => {
-        btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
-        btn.onmouseleave = () => btn.style.backgroundColor = '#007bff';
-        
-        btn.addEventListener("click", (e) => {
-          const urlVideo = e.target.getAttribute("data-url");
-          const esStreaming = e.target.getAttribute("data-m3u8") === "true";
+      // Evento del botón principal de acción inteligente
+      const botonAccion = tarjeta.querySelector(`#action-${index}`);
+      botonAccion.addEventListener("click", () => {
+        const urlVideo = botonAccion.getAttribute("data-url");
+        const statusTxt = tarjeta.querySelector(`#status-txt-${index}`);
 
-                    if (esStreaming) {
-            // NUEVO MOTOR M3U8: Abrimos la pestaña dedicada de progreso para descargar el Stream
-            const nombreSeguro = (tab.title || "Video").replace(" - Google Chrome", "");
-            const urlDestino = chrome.runtime.getURL(`descargar.html?url=${encodeURIComponent(urlVideo)}&titulo=${encodeURIComponent(nombreSeguro)}`);
-            
-            chrome.tabs.create({ url: urlDestino });
-          } else {
+        if (botonAccion.textContent.trim() === "Reproducir") {
+          // Si ya terminó, el botón se convierte en "Reproducir" y abre el archivo en la PC
+          const dId = descargasActivas[urlVideo];
+          if (dId) chrome.downloads.open(dId);
+          return;
+        }
 
-            // MOTOR MP4: Forzamos la descarga nativa directa al disco de tu PC
-            // Creamos un nombre de archivo seguro limpiando caracteres extraños
-            const nombreArchivo = `${(tab.title || "video").replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 20).trim()}.mp4`;
-            
-            chrome.downloads.download({
-              url: urlVideo,
-              filename: nombreArchivo,
-              saveAs: true // Hace que se abra la ventana de "Guardar como" de Windows/Sistema
-            }, () => {
-              if (chrome.runtime.lastError) {
-                // Si el servidor bloquea la descarga, copiamos el link como plan B
-                navigator.clipboard.writeText(urlVideo);
-                e.target.textContent = "Error / Copiado 📋";
-                e.target.style.backgroundColor = "#ea580c";
-              } else {
-                e.target.textContent = "Bajando... 🚀";
-                e.target.style.backgroundColor = "#166534";
-              }
-              setTimeout(() => {
-                e.target.textContent = 'Descargar';
-                btn.style.backgroundColor = '#007bff';
-              }, 2000);
-            });
-          }
+        // Si es una descarga nueva, se delega al background.js
+        botonAccion.textContent = "Procesando...";
+        botonAccion.classList.add("downloading");
+        botonAccion.disabled = true;
+
+        const nombreArchivoSeguro = `${nombreLimpio.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 30).trim()}.${esM3u8 ? 'm3u8' : 'mp4'}`;
+
+        chrome.runtime.sendMessage({
+          action: "iniciarDescarga",
+          url: urlVideo,
+          tabId: tab.id,
+          nombreArchivo: nombreArchivoSeguro
+        }, (res) => {
+          statusTxt.textContent = "Descargando en segundo plano...";
         });
       });
-
-    } else {
-      resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>No se han detectado videos. Reproduce el video en la página web e intenta de nuevo. ❌</p>";
-    }
+    });
   });
 }
 
-botonAnalizar.addEventListener("click", cargarVideos);
+// Escucha en tiempo real el progreso de las descargas enviadas por el background
+chrome.runtime.onMessage.addListener((mensaje) => {
+  if (mensaje.action === "descargaIniciada") {
+    // Al iniciar, mapeamos los botones para cambiar su estado visual al de tu referencia
+    const botones = document.querySelectorAll(".btn-descargar-inteligente");
+    botones.forEach((btn) => {
+      if (btn.getAttribute("data-url") === mensaje.url || btn.textContent === "Procesando...") {
+        const index = btn.getAttribute("data-index");
+        descargasActivas[mensaje.url] = mensaje.downloadId;
 
+        // Configuración visual completa "Estilo Premium"
+        btn.textContent = "Reproducir";
+        btn.style.backgroundColor = "#10b981"; // Cambia a Verde
+        btn.classList.remove("downloading");
+        btn.disabled = false;
+
+        // Mostrar botones de herramientas secundarias
+        const btnCarpeta = document.getElementById(`folder-${index}`);
+        const btnBorrar = document.getElementById(`delete-${index}`);
+        const statusTxt = document.getElementById(`status-txt-${index}`);
+
+        if (statusTxt) statusTxt.textContent = "Complete";
+        if (btnCarpeta) {
+          btnCarpeta.style.display = "inline-flex";
+          btnCarpeta.onclick = () => chrome.downloads.show(mensaje.downloadId);
+        }
+        if (btnBorrar) {
+          btnBorrar.style.display = "inline-flex";
+          btnBorrar.onclick = () => chrome.downloads.erase({ id: mensaje.downloadId });
+        }
+      }
+    });
+  }
+
+  // Actualizaciones de streams M3U8 por fragmentos
+  if (mensaje.action === "progresoDescarga") {
+    const statusTxts = document.querySelectorAll(`[id^="status-txt-"]`);
+    statusTxts.forEach((txt) => {
+      txt.textContent = `Descargando fragmentos... ${mensaje.porcentaje}%`;
+    });
+  }
+});
+
+// Botón de limpieza de caché de videos capturados
 botonLimpiar.addEventListener("click", async () => {
   const pestañas = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!pestañas || pestañas.length === 0) return;
   const tab = pestañas[0];
-  
+
   chrome.runtime.sendMessage({ action: "limpiarVideos", tabId: tab.id }, () => {
-    resultado.innerHTML = "<p style='font-size:12px; color:#64748b;'>Lista limpiada correctamente. 🗑️</p>";
+    resultado.innerHTML = '<div class="sin-videos">Lista limpiada correctamente. 🗑️</div>';
+    descargasActivas = {};
   });
 });
