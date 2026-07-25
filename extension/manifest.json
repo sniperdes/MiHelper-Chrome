@@ -3,15 +3,13 @@
   "name": "MiHelper",
   "version": "0.2",
   "description": "Detector de recursos multimedia por Red.",
-   "permissions": [
+     "permissions": [
     "webRequest",
     "activeTab",
-    "downloads"
+    "downloads",
+    "offscreen"
   ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
-
+  
   "host_permissions": [
     "<all_urls>"
   ],
