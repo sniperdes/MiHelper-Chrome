@@ -68,7 +68,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.downloads.download({
         url: videoUrl,
         filename: request.nombreArchivo || "video_descargado.mp4",
-        conflictAction: "uniq"
+        conflictAction: "uniquify"
       }, (downloadId) => {
         chrome.runtime.sendMessage({ 
           action: "descargaIniciada", 
@@ -83,7 +83,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-// Limpieza automatica al cerrar pestañas activas
+// Limpieza automática al cerrar pestañas activas
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const data = await chrome.storage.local.get("videosPorPestaña");
   const videosPorPestaña = data.videosPorPestaña || {};
@@ -98,11 +98,11 @@ async function procesarYDescargarM3U8(url, tabId) {
   try {
     chrome.runtime.sendMessage({ action: "progresoDescarga", porcentaje: 15, tabId });
 
-    // Forzamos la descarga directa del manifiesto estructurado
+    // Descarga directa del manifiesto estructurado
     chrome.downloads.download({
       url: url,
       filename: "video_streaming.m3u8",
-      conflictAction: "uniq"
+      conflictAction: "uniquify"
     }, (downloadId) => {
       chrome.runtime.sendMessage({ 
         action: "descargaIniciada", 
