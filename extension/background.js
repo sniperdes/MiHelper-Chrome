@@ -82,25 +82,32 @@ async function iniciarDescargaHLS(urlM3u8, tabId, nombreArchivo) {
       notificarPopup();
     }
 
-    // 4. UNIR LOS FRAGMENTOS EN UN SOLO ARCHIVO EN MEMORIA (BLOB)
+        // 4. ENSAMBLADO SEGURO MEDIANTE OFFSCREEN (Solución definitiva Manifest V3)
     descargasActivas[urlM3u8].estado = "ensamblando";
     notificarPopup();
 
-    const blobFinal = new Blob(bloquesDescargados, { type: "video/mp4" });
-    const reader = new FileReader();
-    
-    reader.onloadend = function() {
-      const dataUrl = reader.result;
-      // Forzamos a Chrome a bajar el archivo MP4 ya unido
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: nombreArchivo,
-        saveAs: true
-      }, () => {
-        delete descargasActivas[urlM3u8];
-        notificarPopup();
-      });
-    };
+    // Convertimos los bloques a formatos planos de transferencia para enviarlos al motor
+    const bloquesSerializados = bloquesDescargados.map(b => Array.from(b));
+
+    // Creamos la ventana invisible de procesamiento de descargas
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['LOCAL_STORAGE'], // Motivo estandar aceptado por Chrome para usar APIs del DOM
+      justification: 'Ensamblador de flujos multimedia HLS'
+    });
+
+    // Le enviamos los fragmentos de video reunidos al offscreen para que los baje a la PC
+    chrome.runtime.sendMessage({
+      action: "ensamblarYDescargarNativo",
+      bloques: bloquesSerializados,
+      nombre: nombreArchivo
+    }, () => {
+      // Una vez guardado el archivo en tu PC, destruimos la ventana invisible de la RAM
+      chrome.offscreen.closeDocument();
+      delete descargasActivas[urlM3u8];
+      notificarPopup();
+    });
+
     reader.readAsDataURL(blobFinal);
 
   } catch (error) {
