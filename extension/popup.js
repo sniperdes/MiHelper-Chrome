@@ -9,7 +9,7 @@ async function cargarVideos() {
   
   const pestañas = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!pestañas || pestañas.length === 0) return;
-  tabGlobal = pestañas[0];
+  tabGlobal = pestañas[0]; // Corrección de índice nativo para fijar la pestaña
 
   solicitarDatos();
 }
@@ -23,10 +23,15 @@ function solicitarDatos() {
     if (response.videos && response.videos.length > 0) {
       resultado.innerHTML = ""; 
 
-      response.videos.forEach((urlFinal, index) => {
+      response.videos.forEach((item, index) => {
+        // CORRECCIÓN SEGURO: Soportamos si viene como objeto o como texto plano
+        const urlFinal = typeof item === 'string' ? item : (item.url || item);
         const nombreLimpio = (tabGlobal.title || "Video Detectado").replace(" - Google Chrome", "");
         const esM3u8 = urlFinal.toLowerCase().includes(".m3u8");
-        const datosDescarga = response.descargas[urlFinal];
+        
+        // Buscamos si este enlace específico se está descargando en el motor offscreen
+        const datosDescarga = response.descargas ? response.descargas[urlFinal] : null;
+        const videoId = `mini-reproductor-${index}`;
 
         const tarjeta = document.createElement("div");
         tarjeta.style.background = "#ffffff";
@@ -36,11 +41,10 @@ function solicitarDatos() {
         tarjeta.style.marginBottom = "10px";
         tarjeta.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
 
-        // Construcción de la interfaz de la tarjeta
         let contenidoDinamico = "";
 
         if (datosDescarga) {
-          // Si el archivo se está descargando, dibujamos la barra celeste de tu captura
+          // Si está descargando, pintamos la barra celeste interactiva
           contenidoDinamico = `
             <div style="width: 100%; margin-top: 8px;">
               <div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-bottom:4px;">
@@ -50,14 +54,13 @@ function solicitarDatos() {
               <div style="width:100%; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden;">
                 <div style="width:${datosDescarga.progreso}%; height:100%; background:#38bdf8; transition: width 0.1s linear;"></div>
               </div>
-              <button class="btn-cancelar" data-url="${urlFinal}" style="margin-top:6px; background:#ef4444; color:white; border:none; padding:3px 8px; font-size:10px; border-radius:4px; cursor:pointer;">Cancelar</button>
             </div>
           `;
         } else {
-          // Botón azul normal si no se está descargando
+          // Si está libre, pintamos el botón azul de descarga normal
           contenidoDinamico = `
             <div style="margin-top: 8px; display:flex; justify-content:flex-end;">
-              <button class="btn-descargar-avanzado" data-url="${urlFinal}" style="background-color:#007bff; color:white; border:none; padding:6px 14px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer;">
+              <button class="btn-descargar-avanzado" data-url="${urlFinal}" style="background-color:#007bff; color:white; border:none; padding:6px 14px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; transition: background 0.2s;">
                 ${esM3u8 ? "Descargar Stream" : "Descargar MP4"}
               </button>
             </div>
@@ -82,29 +85,24 @@ function solicitarDatos() {
         resultado.appendChild(tarjeta);
       });
 
-      // Configurar eventos de los botones de descarga
+      // Enganchamos el evento de clic a los botones azules recién dibujados
       document.querySelectorAll(".btn-descargar-avanzado").forEach(btn => {
         btn.addEventListener("click", (e) => {
           const urlVideo = e.target.getAttribute("data-url");
-          const nombreArchivo = `${(tabGlobal.title || "video").substring(0, 25).trim()}.mp4`;
+          // Creamos el nombre del archivo de forma segura usando el título actual
+          const nombreArchivo = `${(tabGlobal.title || "video").substring(0, 20).trim()}.mp4`;
           
+          e.target.textContent = "Iniciando...";
+          e.target.style.backgroundColor = "#64748b";
+
           chrome.runtime.sendMessage({
             action: "procesarDescargaHLS",
             url: urlVideo,
             tabId: tabGlobal.id,
             nombre: nombreArchivo
           }, () => {
-            solicitarDatos(); // Refrescar vista instantáneamente
-          });
-        });
-      });
-
-      // Configurar eventos de los botones cancelar
-      document.querySelectorAll(".btn-cancelar").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const urlVideo = e.target.getAttribute("data-url");
-          chrome.runtime.sendMessage({ action: "cancelarDescargaHLS", url: urlVideo }, () => {
-            solicitarDatos();
+            // Forzamos un refresco inmediato para ocultar el botón y mostrar la barra
+            setTimeout(solicitarDatos, 300);
           });
         });
       });
@@ -115,10 +113,10 @@ function solicitarDatos() {
   });
 }
 
-// Escuchar actualizaciones de progreso enviadas por el background.js en tiempo real
+// Escuchamos los latidos del progreso que manda el background en tiempo real para mover la barra
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "actualizarProgresoGlobal") {
-    solicitarDatos(); // Redibujar popup con los nuevos porcentajes
+    solicitarDatos();
   }
 });
 
