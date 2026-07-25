@@ -71,16 +71,14 @@ async function cargarVideos() {
           const urlVideo = e.target.getAttribute("data-url");
           const esStreaming = e.target.getAttribute("data-m3u8") === "true";
 
-          if (esStreaming) {
-            // Si es M3U8, por ahora copiamos el link de forma segura
-            navigator.clipboard.writeText(urlVideo);
-            e.target.textContent = "¡Copiado! 📋";
-            e.target.style.backgroundColor = "#28a745";
-            setTimeout(() => {
-              e.target.textContent = 'Copiar Link';
-              e.target.style.backgroundColor = "#007bff";
-            }, 1500);
+                    if (esStreaming) {
+            // NUEVO MOTOR M3U8: Abrimos la pestaña dedicada de progreso para descargar el Stream
+            const nombreSeguro = (tab.title || "Video").replace(" - Google Chrome", "");
+            const urlDestino = chrome.runtime.getURL(`descargar.html?url=${encodeURIComponent(urlVideo)}&titulo=${encodeURIComponent(nombreSeguro)}`);
+            
+            chrome.tabs.create({ url: urlDestino });
           } else {
+
             // MOTOR MP4: Forzamos la descarga nativa directa al disco de tu PC
             // Creamos un nombre de archivo seguro limpiando caracteres extraños
             const nombreArchivo = `${(tab.title || "video").replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 20).trim()}.mp4`;
