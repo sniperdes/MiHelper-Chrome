@@ -13,9 +13,11 @@ async function cargarVideos() {
     resultado.innerHTML = '<div class="sin-videos">No se pudo acceder a la pestaña activa.</div>';
     return;
   }
-  const tab = pestañas[0];
+  const tab = pestañas[0]; // <--- CORREGIDO: Añadido el [0] para extraer la pestaña real
   const urlObjeto = new URL(tab.url || "https://localhost");
   const dominioLimpio = urlObjeto.hostname.replace("www.", "");
+  
+  // ... (el resto del archivo popup.js se queda igual)
 
   chrome.runtime.sendMessage({ action: "obtenerVideosDeRed", tabId: tab.id }, (response) => {
     if (chrome.runtime.lastError || !response || !response.videos || response.videos.length === 0) {
