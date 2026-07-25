@@ -6,9 +6,10 @@ try {
 
       if (tabId === -1 || !tabId) return;
 
-      if (url.includes("ads") || url.includes("analytics") || url.includes("popads") || url.includes("adsterra")) return;
+      // Filtro para omitir anuncios, scripts de analíticas e imágenes estáticas de pre-carga
+      if (url.includes("ads") || url.includes("analytics") || url.includes("popads") || url.includes(".jpg") || url.includes(".png") || url.includes(".gif")) return;
 
-      // Captura de flujos reales
+      // Capturar estrictamente los archivos de video e índices de transmisión válidos
       if (url.includes(".mp4") || url.includes(".m3u8")) {
         chrome.storage.local.get("videosPorPestaña").then((data) => {
           const videosPorPestaña = data.videosPorPestaña || {};
@@ -30,6 +31,7 @@ try {
   console.error("Error en capturador de red:", error);
 }
 
+// Manejador de eventos y puente de descargas nativas
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "obtenerVideosDeRed") {
     chrome.storage.local.get("videosPorPestaña").then((data) => {
@@ -52,30 +54,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === "iniciarDescarga") {
     const videoUrl = request.url;
-    const tabId = request.tabId;
-    const nombreSugerido = request.nombreArchivo ? request.nombreArchivo.replace(".m3u8", ".mp4") : "video.mp4";
     
-    if (videoUrl.includes(".m3u8")) {
-      procesarYDescargarM3U8(videoUrl, tabId, nombreSugerido);
-    } else {
-      chrome.downloads.download({
+    chrome.downloads.download({
+      url: videoUrl,
+      filename: request.nombreArchivo,
+      conflictAction: "uniquify"
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error al iniciar descarga nativa:", chrome.runtime.lastError.message);
+        return;
+      }
+      
+      // Notificar de inmediato al popup que la descarga comenzó exitosamente
+      chrome.runtime.sendMessage({
+        action: "descargaProgreso",
         url: videoUrl,
-        filename: nombreSugerido,
-        conflictAction: "uniquify"
-      }, (downloadId) => {
-        chrome.runtime.sendMessage({ 
-          action: "descargaIniciada", 
-          downloadId: downloadId, 
-          url: videoUrl, 
-          tabId: tabId 
-        });
+        downloadId: downloadId,
+        estado: "en_progreso"
       });
-    }
-    sendResponse({ procesando: true });
+    });
+    sendResponse({ ok: true });
   }
   return true;
 });
 
+// Monitorear en tiempo real el progreso del gestor de descargas de Chrome
+chrome.downloads.onChanged.addListener((delta) => {
+  // Cuando una descarga cambia de estado, buscamos si finalizó con éxito
+  if (delta.state && delta.state.current === "complete") {
+    chrome.downloads.search({ id: delta.id }, (resultados) => {
+      if (resultados && resultados.length > 0) {
+        const itemDescarga = resultados[0];
+        
+        // Avisar al popup para cambiar el diseño del botón específico a "Reproducir"
+        chrome.runtime.sendMessage({
+          action: "descargaProgreso",
+          url: itemDescarga.url,
+          downloadId: delta.id,
+          estado: "completado"
+        });
+      }
+    });
+  }
+});
+
+// Limpieza al cerrar la pestaña activa
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const data = await chrome.storage.local.get("videosPorPestaña");
   const videosPorPestaña = data.videosPorPestaña || {};
@@ -84,71 +107,3 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     await chrome.storage.local.set({ videosPorPestaña });
   }
 });
-
-async function procesarYDescargarM3U8(urlM3u8, tabId, nombreArchivo) {
-  try {
-    const baseURLEndpoint = urlM3u8.substring(0, urlM3u8.lastIndexOf("/") + 1);
-    const respuesta = await fetch(urlM3u8);
-    const texto = await respuesta.text();
-    
-    const lineas = texto.split("\n");
-    let fragmentosUrls = [];
-    
-    for (let linea of lineas) {
-      linea = linea.trim();
-      if (linea === "" || linea.startsWith("#")) continue;
-      
-      if (!linea.startsWith("http") && !linea.startsWith("//")) {
-        fragmentosUrls.push(baseURLEndpoint + linea);
-      } else {
-        fragmentosUrls.push(linea);
-      }
-    }
-
-    if (fragmentosUrls.length === 0) return;
-
-    let bloquesBinarios = [];
-    
-    for (let i = 0; i < fragmentosUrls.length; i++) {
-      try {
-        const resFragmento = await fetch(fragmentosUrls[i]);
-        const buffer = await resFragmento.arrayBuffer();
-        bloquesBinarios.push(buffer);
-        
-        let porcentajeCalculado = Math.round(((i + 1) / fragmentosUrls.length) * 100);
-        chrome.runtime.sendMessage({ 
-          action: "progresoDescarga", 
-          porcentaje: porcentajeCalculado, 
-          url: urlM3u8,
-          tabId: tabId 
-        });
-      } catch (errFragmento) {
-        console.error("Error bajando fragmento:", errFragmento);
-      }
-    }
-
-    const videoCompletoBlob = new Blob(bloquesBinarios, { type: "video/mp4" });
-    
-    const reader = new FileReader();
-    reader.onloadend = function() {
-      const dataUrlBinaria = reader.result;
-      
-      chrome.downloads.download({
-        url: dataUrlBinaria,
-        filename: nombreArchivo,
-        conflictAction: "uniquify"
-      }, (downloadId) => {
-        chrome.runtime.sendMessage({ 
-          action: "descargaIniciada", 
-          downloadId: downloadId, 
-          url: urlM3u8, 
-          tabId: tabId 
-        });
-      });
-    };
-    reader.readAsDataURL(videoCompletoBlob);
-
-  } catch (error) {
-    console.error("Error compilando hls:", error);
-  }
-}
