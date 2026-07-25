@@ -13,7 +13,10 @@ async function cargarVideos() {
     resultado.innerHTML = '<div class="sin-videos">No se pudo acceder a la pestaña activa.</div>';
     return;
   }
-  const tab = pestañas[0]; // <--- CORREGIDO: Añadido el [0] para extraer la pestaña real
+  
+  // EXTRAE LA PESTAÑA REAL (Asegúrate de que tenga el [0] al final de pestañas)
+  const tab = pestañas[0]; 
+  
   const urlObjeto = new URL(tab.url || "https://localhost");
   const dominioLimpio = urlObjeto.hostname.replace("www.", "");
   
