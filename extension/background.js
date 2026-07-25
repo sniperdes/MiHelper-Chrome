@@ -1,79 +1,124 @@
 const videosPorPestaña = {};
-const descargasActivas = {}; 
 
+// Detectar videos que pasan por la red
 chrome.webRequest.onBeforeRequest.addListener(
-  (detalles) => {
-    const url = detalles.url;
-    const tabId = detalles.tabId;
-    if (tabId === -1) return;
+    (details) => {
 
-    if (url.includes("ads") || url.includes("analytics") || url.includes("popads")) return;
+        if (details.tabId === -1)
+            return;
 
-    if (url.includes(".mp4") || url.includes(".m3u8") || url.includes(".m4s") || url.includes(".ts")) {
-      if (!videosPorPestaña[tabId]) videosPorPestaña[tabId] = [];
-      if (!videosPorPestaña[tabId].includes(url)) {
-        videosPorPestaña[tabId].push(url);
-      }
+        const url = details.url.toLowerCase();
+
+        if (
+            url.includes(".mp4") ||
+            url.includes(".m3u8") ||
+            url.includes(".m4s") ||
+            url.includes(".ts")
+        ) {
+
+            if (!videosPorPestaña[details.tabId])
+                videosPorPestaña[details.tabId] = [];
+
+            if (!videosPorPestaña[details.tabId].includes(details.url)) {
+
+                videosPorPestaña[details.tabId].push(details.url);
+
+                console.log("[MiHelper] Video detectado:", details.url);
+
+            }
+
+        }
+
+    },
+    {
+        urls: ["<all_urls>"]
     }
-  },
-  { urls: ["<all_urls>"] }
 );
 
+
+// Mensajes del popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "reportarProgresoDesdeOffscreen") {
-    descargasActivas[request.url] = { 
-      progreso: request.progreso, 
-      velocidad: request.velocidad, 
-      estado: request.estado 
-    };
-    if (request.estado === "finalizado") {
-      delete descargasActivas[request.url];
+
+    switch (request.action) {
+
+        case "obtenerVideosDeRed":
+
+            sendResponse({
+                videos: videosPorPestaña[request.tabId] || []
+            });
+
+            break;
+
+        case "limpiarVideos":
+
+            videosPorPestaña[request.tabId] = [];
+
+            sendResponse({
+                ok: true
+            });
+
+            break;
+
+        case "procesarDescarga":
+
+            console.log("[MiHelper] Iniciando descarga");
+
+            iniciarDescarga(
+                request.url,
+                request.nombre
+            );
+
+            sendResponse({
+                iniciado: true
+            });
+
+            break;
+
     }
-    chrome.runtime.sendMessage({ action: "actualizarProgresoGlobal", descargas: descargasActivas }).catch(() => {});
-    sendResponse({ ok: true });
-  }
 
-  if (request.action === "obtenerVideosDeRed") {
-    sendResponse({ videos: videosPorPestaña[request.tabId] || [], descargas: descargasActivas });
-  }
-  
-  if (request.action === "limpiarVideos") {
-    videosPorPestaña[request.tabId] = [];
-    sendResponse({ num: 0 });
-  }
+    return true;
 
-  if (request.action === "procesarDescargaHLS") {
-    crearYEjecutarOffscreen(request.url, request.nombre);
-    sendResponse({ iniciado: true });
-  }
-  return true;
 });
 
-async function crearYEjecutarOffscreen(url, nombre) {
-  try {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['LOCAL_STORAGE'],
-      justification: 'Descarga activa de flujos multimedia'
-    });
-    
-    setTimeout(() => {
-      chrome.runtime.sendMessage({
-        action: "iniciarDescargaDesdeCero",
-        url: url,
-        nombre: nombre
-      }).catch(() => {});
-    }, 500);
 
-  } catch (e) {
+// Crear el documento Offscreen
+async function iniciarDescarga(url, nombre) {
+
+    try {
+
+        await chrome.offscreen.createDocument({
+
+            url: "offscreen.html",
+
+            reasons: ["BLOBS"],
+
+            justification: "Descarga de video"
+
+        });
+
+    } catch (e) {
+
+        // Si ya existe no pasa nada
+    }
+
+    console.log("[MiHelper] Enviando al offscreen");
+
     chrome.runtime.sendMessage({
-      action: "iniciarDescargaDesdeCero",
-      url: url,
-      nombre: nombre
-    }).catch(() => {});
-  }
+
+        action: "descargarVideo",
+
+        url: url,
+
+        nombre: nombre
+
+    });
+
 }
 
+
+// Limpiar pestañas cerradas
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (videosPorPestaña[tabId]) delete videosPorPestaña[tabId];
+
+    delete videosPorPestaña[tabId];
+
 });
