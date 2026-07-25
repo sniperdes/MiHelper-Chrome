@@ -1,10 +1,9 @@
 const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
 
-// Guardamos referencias globales de los ID de descarga vinculados a sus URLs
+// Mapeo para registrar los IDs de descarga vinculados a sus URLs
 let descargasActivas = {};
 
-// Carga automática al abrir el popup
 document.addEventListener("DOMContentLoaded", cargarVideos);
 
 async function cargarVideos() {
@@ -14,9 +13,7 @@ async function cargarVideos() {
     return;
   }
   
-  // SOLUCIÓN: Extraemos el primer elemento usando el índice [0]
   const tab = pestañas[0]; 
-  
   const urlObjeto = new URL(tab.url || "https://localhost");
   const dominioLimpio = urlObjeto.hostname.replace("www.", "");
 
@@ -26,7 +23,7 @@ async function cargarVideos() {
       return;
     }
 
-    resultado.innerHTML = ""; // Limpiar el indicador base
+    resultado.innerHTML = ""; 
 
     response.videos.forEach((urlFinal, index) => {
       const nombreLimpio = (tab.title || "Video Detectado").replace(" - Google Chrome", "").trim();
@@ -36,30 +33,26 @@ async function cargarVideos() {
       tarjeta.className = "video-card";
       tarjeta.innerHTML = `
         <div class="video-meta">
-          <!-- Miniatura Simulada -->
           <div class="video-thumbnail">
             <span class="thumbnail-icon">${esM3u8 ? '🎥' : '🎞️'}</span>
-            <span class="thumbnail-overlay">⏱️ 24:01</span>
+            <span class="thumbnail-overlay">VIDEO</span>
           </div>
 
-          <!-- Detalles del Video -->
           <div class="video-details">
             <h4 class="video-title" title="${nombreLimpio}">${nombreLimpio}</h4>
             
             <div class="action-group">
               <button class="btn-icon btn-carpeta" id="folder-${index}" style="display:none;" title="Mostrar en Carpeta">📂</button>
-              <button class="btn-icon btn-borrar" id="delete-${index}" style="display:none;" title="Eliminar archivo">🗑️</button>
               <button class="btn-main btn-descargar-inteligente" id="action-${index}" data-url="${urlFinal}" data-index="${index}">
-                ${esM3u8 ? 'Descargar Stream' : 'Reproducir'}
+                ${esM3u8 ? 'Descargar Stream' : 'Descargar MP4'}
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Estado de Progreso unificado -->
         <div class="status-container">
           <div class="status-top">
-            <span class="status-text" id="status-txt-${index}">${esM3u8 ? 'Stream Detectado' : 'Disponible para descargar'}</span>
+            <span class="status-text" id="status-txt-${index}">${esM3u8 ? 'Stream Detectado (.m3u8)' : 'Video MP4 Directo'}</span>
           </div>
           <span class="status-domain">${dominioLimpio}</span>
         </div>
@@ -67,83 +60,72 @@ async function cargarVideos() {
 
       resultado.appendChild(tarjeta);
 
-      // Evento del botón principal de acción inteligente
       const botonAccion = tarjeta.querySelector(`#action-${index}`);
       botonAccion.addEventListener("click", () => {
         const urlVideo = botonAccion.getAttribute("data-url");
         const statusTxt = tarjeta.querySelector(`#status-txt-${index}`);
 
+        // Comportamiento si la descarga ya finalizó
         if (botonAccion.textContent.trim() === "Reproducir") {
           const dId = descargasActivas[urlVideo];
           if (dId) chrome.downloads.open(dId);
           return;
         }
 
-        botonAccion.textContent = "Procesando...";
+        // Estado inicial de procesamiento
+        botonAccion.textContent = "Iniciando...";
         botonAccion.classList.add("downloading");
         botonAccion.disabled = true;
 
-        const nombreArchivoSeguro = `${nombreLimpio.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 30).trim()}.${esM3u8 ? 'mp4' : 'mp4'}`;
+        // Limpiar nombre de archivo para evitar caracteres inválidos del sistema operativo
+        const nombreArchivoSeguro = `${nombreLimpio.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 40).trim()}.${esM3u8 ? 'm3u8' : 'mp4'}`;
 
         chrome.runtime.sendMessage({
           action: "iniciarDescarga",
           url: urlVideo,
           tabId: tab.id,
           nombreArchivo: nombreArchivoSeguro
-        }, (res) => {
-          statusTxt.textContent = "Descargando en segundo plano...";
         });
       });
     });
   });
 }
 
-// Escucha en tiempo real el progreso de las descargas enviadas por el background
+// Intercepta los cambios de estado enviados desde background.js
 chrome.runtime.onMessage.addListener((mensaje) => {
-  if (mensaje.action === "descargaIniciada") {
-    const botones = document.querySelectorAll(".btn-descargar-inteligente");
-    botones.forEach((btn) => {
-      if (btn.getAttribute("data-url") === mensaje.url || btn.textContent === "Procesando...") {
-        const index = btn.getAttribute("data-index");
-        descargasActivas[mensaje.url] = mensaje.downloadId;
-
-        btn.textContent = "Reproducir";
-        btn.style.backgroundColor = "#10b981"; 
-        btn.classList.remove("downloading");
-        btn.disabled = false;
-
-        const btnCarpeta = document.getElementById(`folder-${index}`);
-        const btnBorrar = document.getElementById(`delete-${index}`);
-        const statusTxt = document.getElementById(`status-txt-${index}`);
-
-        if (statusTxt) statusTxt.textContent = "Complete";
-        if (btnCarpeta) {
-          btnCarpeta.style.display = "inline-flex";
-          btnCarpeta.onclick = () => chrome.downloads.show(mensaje.downloadId);
-        }
-        if (btnBorrar) {
-          btnBorrar.style.display = "inline-flex";
-          btnBorrar.onclick = () => chrome.downloads.erase({ id: mensaje.downloadId });
-        }
-      }
-    });
-  }
-
-  if (mensaje.action === "progresoDescarga") {
+  if (mensaje.action === "descargaProgreso") {
     const botones = document.querySelectorAll(".btn-descargar-inteligente");
     botones.forEach((btn) => {
       if (btn.getAttribute("data-url") === mensaje.url) {
         const index = btn.getAttribute("data-index");
-        btn.textContent = `${mensaje.porcentaje}%`;
-        
         const statusTxt = document.getElementById(`status-txt-${index}`);
-        if (statusTxt) statusTxt.textContent = `Descargando fragmentos...`;
+        
+        descargasActivas[mensaje.url] = mensaje.downloadId;
+        btn.disabled = false;
+
+        if (mensaje.estado === "en_progreso") {
+          btn.textContent = "Descargando...";
+          if (statusTxt) statusTxt.textContent = "El navegador está descargando el archivo...";
+        } 
+        
+        if (mensaje.estado === "completado") {
+          btn.textContent = "Reproducir";
+          btn.style.backgroundColor = "#10b981"; // Cambia a verde al finalizar
+          btn.classList.remove("downloading");
+          
+          if (statusTxt) statusTxt.textContent = "Complete";
+          
+          const btnCarpeta = document.getElementById(`folder-${index}`);
+          if (btnCarpeta) {
+            btnCarpeta.style.display = "inline-flex";
+            btnCarpeta.onclick = () => chrome.downloads.show(mensaje.downloadId);
+          }
+        }
       }
     });
   }
 });
 
-// Botón de limpieza de caché de videos capturados
 botonLimpiar.addEventListener("click", async () => {
   const pestañas = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!pestañas || pestañas.length === 0) return;
