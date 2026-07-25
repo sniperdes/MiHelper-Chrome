@@ -1,4 +1,3 @@
-
 const botonAnalizar = document.getElementById("analizar");
 const botonLimpiar = document.getElementById("limpiar");
 const resultado = document.getElementById("resultado");
@@ -54,8 +53,8 @@ async function cargarVideos() {
             </div>
           </div>
 
-          <!-- Botón Seguro -->
-          <button class="btn-copiar-seguro" data-url="${urlFinal}" style="background-color:#007bff; color:white; border:none; padding:8px 12px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; margin-left:10px; flex-shrink:0; transition: background 0.2s;">
+          <!-- Botón Inteligente -->
+          <button class="btn-accion-inteligente" data-url="${urlFinal}" data-m3u8="${esM3u8}" style="background-color:#007bff; color:white; border:none; padding:8px 12px; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; margin-left:10px; flex-shrink:0; transition: background 0.2s;">
             ${esM3u8 ? 'Copiar Link' : 'Descargar'}
           </button>
         `;
@@ -63,25 +62,49 @@ async function cargarVideos() {
         resultado.appendChild(tarjeta);
       });
 
-      // Lógica de los botones
-      document.querySelectorAll(".btn-copiar-seguro").forEach(btn => {
+      // Nueva lógica de botones de descarga nativa
+      document.querySelectorAll(".btn-accion-inteligente").forEach(btn => {
         btn.onmouseenter = () => btn.style.backgroundColor = '#0056b3';
         btn.onmouseleave = () => btn.style.backgroundColor = '#007bff';
         
         btn.addEventListener("click", (e) => {
           const urlVideo = e.target.getAttribute("data-url");
-          
-          navigator.clipboard.writeText(urlVideo);
-          e.target.textContent = "¡Copiado! 📋";
-          e.target.style.backgroundColor = "#28a745";
-          
-          // Abre el enlace en una pestaña nueva (si es un MP4 real se descargará automáticamente)
-          window.open(urlVideo, '_blank');
+          const esStreaming = e.target.getAttribute("data-m3u8") === "true";
 
-          setTimeout(() => {
-            e.target.textContent = esM3u8 ? 'Copiar Link' : 'Descargar';
-            e.target.style.backgroundColor = "#007bff";
-          }, 1500);
+          if (esStreaming) {
+            // Si es M3U8, por ahora copiamos el link de forma segura
+            navigator.clipboard.writeText(urlVideo);
+            e.target.textContent = "¡Copiado! 📋";
+            e.target.style.backgroundColor = "#28a745";
+            setTimeout(() => {
+              e.target.textContent = 'Copiar Link';
+              e.target.style.backgroundColor = "#007bff";
+            }, 1500);
+          } else {
+            // MOTOR MP4: Forzamos la descarga nativa directa al disco de tu PC
+            // Creamos un nombre de archivo seguro limpiando caracteres extraños
+            const nombreArchivo = `${(tab.title || "video").replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 20).trim()}.mp4`;
+            
+            chrome.downloads.download({
+              url: urlVideo,
+              filename: nombreArchivo,
+              saveAs: true // Hace que se abra la ventana de "Guardar como" de Windows/Sistema
+            }, () => {
+              if (chrome.runtime.lastError) {
+                // Si el servidor bloquea la descarga, copiamos el link como plan B
+                navigator.clipboard.writeText(urlVideo);
+                e.target.textContent = "Error / Copiado 📋";
+                e.target.style.backgroundColor = "#ea580c";
+              } else {
+                e.target.textContent = "Bajando... 🚀";
+                e.target.style.backgroundColor = "#166534";
+              }
+              setTimeout(() => {
+                e.target.textContent = 'Descargar';
+                btn.style.backgroundColor = '#007bff';
+              }, 2000);
+            });
+          }
         });
       });
 
